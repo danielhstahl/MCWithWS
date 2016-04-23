@@ -1,12 +1,14 @@
 <script>
-var socket = new WebSocket("ws://localhost:9002");
+var socket = new WebSocket("ws://localhost:9001");
 var numMessages=0;
 socket.onmessage=function(event){
     console.log(event.data);
     if(numMessages===0){
-        socket.send("{wassup:5}");
+        //socket.send(JSON.stringify({wassup:5}));
+        socket.send(JSON.stringify({yield:5}));
+        
+        //socket.send("wassup");//test to see if something this "bad" would work
     }
     numMessages++;    
 }
-
 </script>

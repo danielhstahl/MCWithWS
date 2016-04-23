@@ -9,6 +9,9 @@
 #define ASIO_HAS_STD_ADDRESSOF
 #define ASIO_HAS_STD_SHARED_PTR
 #define ASIO_HAS_STD_TYPE_TRAITS
+//#define RAPIDJSON_PARSE_ERROR_NORETURN(parseErrorCode,offset)
+//#include <stdexcept>               // std::runtime_error
+
 #include <set>
 #include <asio.hpp>
 #include <websocketpp/config/asio_no_tls.hpp>
@@ -33,7 +36,12 @@
 #include "writer.h" //rapidjson
 #include "reader.h" //rapidjson
 #include "stringbuffer.h" //rapidjson
-
+#include "error/error.h" // rapidjson::ParseResult
+#include "error/en.h" // rapidjson::ParseResult
+struct ParseException : std::runtime_error, rapidjson::ParseResult {
+  ParseException(rapidjson::ParseErrorCode code, const char* msg, size_t offset)
+    : std::runtime_error(msg), ParseResult(code, offset) {}
+};
 
 typedef websocketpp::server<websocketpp::config::asio> server;
 using websocketpp::connection_hdl;
@@ -208,13 +216,11 @@ public:
 	void on_message(connection_hdl hdl, server::message_ptr msg) {
     rapidjson::Document parms;
     auto ws=[&](const std::string& message){
-      m_server.send(hdl,message, websocketpp::frame::opcode::text);
+      m_server.send(hdl, message, websocketpp::frame::opcode::text);
     };
     try{
-      rapidjson::ParseResult result=parms.Parse(msg->get_payload().c_str()); //parms should de-allocate after detaching threads since its not a pointer
-      if(!result){
-        std::cout<<"got here"<<std::endl;
-        throw std::invalid_argument("JSON");
+      if(parms.Parse(msg->get_payload().c_str()).HasParseError()){ //parms should de-allocate after detaching threads since its not a pointer
+        throw std::invalid_argument("JSON not formatted correctly");
       }
       if(parms.FindMember("yield")!=parms.MemberEnd()){
         std::thread myThread(&WS::getYield, this, hdl, msg); //note that I cannot pass "parms" directly becuase of threading issues.  This means I have to parse this twice which is unfortunate.  If they aren't too large it shouldn't be that bad...
@@ -240,7 +246,7 @@ public:
 			m_server.run();
 	}
 };
-int main(){
+int main(int argc, char* argv[]){
   WS server;//([&](auto& server, auto& connection));
-  server.run(9002);
+  server.run(atoi(argv[1]));//give port to the program
 }
