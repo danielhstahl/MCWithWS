@@ -72,16 +72,16 @@ public:
 		m_server.set_close_handler(bind(&WS::on_close,this,::_1));
 		m_server.set_message_handler(bind(&WS::on_message,this,::_1,::_2));
 	}
-  void getYield(connection_hdl connection, server::message_ptr msg){
+  void getYield(connection_hdl connection, rapidjson::Value::ConstMemberIterator parms){
     auto ws=[&](const std::string& message){
       m_server.send(connection,message, websocketpp::frame::opcode::text);
     };
-    rapidjson::Document parms;
-    parms.Parse(msg->get_payload().c_str()); //large array
+    //rapidjson::Document parms;
+    //parms.Parse(msg->get_payload().c_str()); //large array
     Date currDate;
     double daysDiff;//years from now that libor rate goes till (typically 7 days divided by 360)
     auto& myDataStructure=holdThreads[connection]; //reference?
-    myDataStructure.historical=populateYieldFromExternalSource(myDataStructure.currDate, parms, myDataStructure.yld, daysDiff);
+    myDataStructure.historical=populateYieldFromExternalSource(myDataStructure.currDate, parms->value, myDataStructure.yld, daysDiff);
     if(myDataStructure.historical.size()==0){
       ws("{\"Error\":\"Problem with yield\"}");
     }
@@ -91,12 +91,13 @@ public:
       myDataStructure.yld.getForwardCurve(ws); //send data ot node
     }
   }
-  void getMC(connection_hdl connection, server::message_ptr msg){
+  void getMC(connection_hdl connection, rapidjson::Value::ConstMemberIterator parms){
     auto ws=[&](const std::string& message){
       m_server.send(connection,message, websocketpp::frame::opcode::text);
     };
-    rapidjson::Document parms;
-    parms.Parse(msg->get_payload().c_str()); //large array
+    //rapidjson::Document parms;
+    //parms.Parse(msg->get_payload().c_str()); //large array
+    
     HullWhiteEngine<double> HW;
     auto& currentThreadData=holdThreads[connection]; //should be a reference so no copying
     double r0=currentThreadData.yld.getShortRate(); //note we can change this here to an AutoDiff if we want sensitivities
@@ -104,26 +105,30 @@ public:
     MC<double> monteC;
     std::vector<AssetFeatures> portfolio;
     currentThreadData.currDate.setScale("year");
-    rapidjson::Value::ConstMemberIterator itrport= parms.FindMember("portfolio");
-    rapidjson::Value::ConstMemberIterator itrglob= parms.FindMember("global");
-    if(itrport!=parms.MemberEnd() && itrglob!=parms.MemberEnd()){
+    rapidjson::Value::ConstMemberIterator itrport= parms->value.FindMember("portfolio");
+    rapidjson::Value::ConstMemberIterator itrglob= parms->value.FindMember("global");
+    if(itrport!=parms->value.MemberEnd() && itrglob!=parms->value.MemberEnd()){
       auto& jsonPortfolio=itrport->value;
       auto& globalVars=itrglob->value;
       int n=jsonPortfolio.Size();
       for(int i=0; i<n; ++i){
         AssetFeatures asset;
         auto& indAsset=jsonPortfolio[i];
-        if(indAsset.FindMember("T")!=indAsset.MemberEnd()){
-            asset.Maturity=currentThreadData.currDate+indAsset["T"].GetDouble();
+        auto iter=indAsset.FindMember("T");
+        if(iter!=indAsset.MemberEnd()){
+            asset.Maturity=currentThreadData.currDate+iter->value.GetDouble();
         }
-        if(indAsset.FindMember("k")!=indAsset.MemberEnd()){
-            asset.Strike=indAsset["k"].GetDouble();
+        iter=indAsset.FindMember("k");
+        if(iter!=indAsset.MemberEnd()){
+            asset.Strike=iter->value.GetDouble();
         }
-        if(indAsset.FindMember("delta")!=indAsset.MemberEnd()){
-            asset.Tenor=indAsset["delta"].GetDouble();
+        iter=indAsset.FindMember("delta");
+        if(iter!=indAsset.MemberEnd()){
+            asset.Tenor=iter->value.GetDouble();
         }
-        if(indAsset.FindMember("Tm")!=indAsset.MemberEnd()){
-            asset.UnderlyingMaturity=currentThreadData.currDate+indAsset["Tm"].GetDouble();
+        iter=indAsset.FindMember("Tm");
+        if(iter!=indAsset.MemberEnd()){
+            asset.UnderlyingMaturity=currentThreadData.currDate+iter->value.GetDouble();
         }
         asset.type=indAsset["type"].GetInt();
         portfolio.push_back(asset); //does this entail unessary copying?
@@ -132,15 +137,16 @@ public:
       double sigma=globalVars["sigma"].GetDouble(); //can be made autodiff too
       double b=findHistoricalMean(currentThreadData.historical, currentThreadData.daysDiff, a);
       int m=0;
-      if(globalVars.FindMember("n")!=parms.MemberEnd()){
+      if(globalVars.FindMember("n")!=parms->value.MemberEnd()){
           m=globalVars["n"].GetInt();
       }
       HW.setSigma(sigma);
       HW.setReversion(a);
       currentThreadData.currDate.setScale("day");
       Date PortfolioMaturity;
-      if(globalVars.FindMember("t")!=globalVars.MemberEnd()){
-          PortfolioMaturity=currentThreadData.currDate+globalVars["t"].GetInt();
+      auto iter=globalVars.FindMember("t");
+      if(iter!=globalVars.MemberEnd()){
+          PortfolioMaturity=currentThreadData.currDate+iter->value.GetInt();
       }
       monteC.setM(m);
       std::vector<Date> path=getUniquePath(portfolio, PortfolioMaturity);
@@ -222,12 +228,14 @@ public:
       if(parms.Parse(msg->get_payload().c_str()).HasParseError()){ //parms should de-allocate after detaching threads since its not a pointer
         throw std::invalid_argument("JSON not formatted correctly");
       }
-      if(parms.FindMember("yield")!=parms.MemberEnd()){
-        std::thread myThread(&WS::getYield, this, hdl, msg); //note that I cannot pass "parms" directly becuase of threading issues.  This means I have to parse this twice which is unfortunate.  If they aren't too large it shouldn't be that bad...
+      rapidjson::Value::ConstMemberIterator itr1 =parms.FindMember("yield");
+      rapidjson::Value::ConstMemberIterator itr2 =parms.FindMember("mc");
+      if(itr1!=parms.MemberEnd()){
+        std::thread myThread(&WS::getYield, this, hdl, itr1); 
         myThread.detach();
       }
-      else if(parms.FindMember("mc")!=parms.MemberEnd()){
-        std::thread myThread(&WS::getMC, this, hdl, msg);//note that I cannot pass "parms" directly becuase of threading issues.  This means I have to parse the JSON twice which is unfortunate.  If they aren't too large it shouldn't be that bad...
+      else if(itr2!=parms.MemberEnd()){
+        std::thread myThread(&WS::getMC, this, hdl, itr2);
         myThread.detach();
       }
       else{
