@@ -211,7 +211,11 @@ public:
       m_server.send(hdl,message, websocketpp::frame::opcode::text);
     };
     try{
-      parms.Parse(msg->get_payload().c_str()); //parms should de-allocate after detaching threads since its not a pointer
+      rapidjson::ParseResult result=parms.Parse(msg->get_payload().c_str()); //parms should de-allocate after detaching threads since its not a pointer
+      if(!result){
+        std::cout<<"got here"<<std::endl;
+        throw std::invalid_argument("JSON");
+      }
       if(parms.FindMember("yield")!=parms.MemberEnd()){
         std::thread myThread(&WS::getYield, this, hdl, msg); //note that I cannot pass "parms" directly becuase of threading issues.  This means I have to parse this twice which is unfortunate.  If they aren't too large it shouldn't be that bad...
         myThread.detach();
