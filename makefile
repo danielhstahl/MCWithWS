@@ -1,5 +1,5 @@
-LDFLAGS=-L../../NewtonOptimization -lNewton -L../../DateUtilities -lDate  -L../../eigen   -L../../AutoDiff -lAutoDiff
-INCLUDES=-I../../NewtonOptimization -I../../DateUtilities -I../../FixedIncomeUtilities -I../../eigen -I../../BinomialTree -I../../rapidjson/include/rapidjson -I../../AutoDiff -I../../MonteCarlo -I../../websocketpp -I../../asio/asio/include
+LDFLAGS=-L../GaussNewton -lNewton -L../MiscellaniousUtilities -lDate  -L../eigen -L../AutoDiff -lAutoDiff
+INCLUDES=-I../GaussNewton -I../MiscellaniousUtilities -I../FixedIncomeUtilities -I../BinomialTree -I../rapidjson/include/rapidjson -I../AutoDiff -I../MonteCarlo -I../websocketpp -I../asio/asio/include -I../eigen
 
 MarketRisk: main.o
 	g++ -std=c++14 -O3  -w -Wall -pthread -fPIC main.o  $(LDFLAGS) $(INCLUDES) -o MarketRisk -fopenmp

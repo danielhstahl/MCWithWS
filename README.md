@@ -1,1 +1,1 @@
-Applications for <a href="https://github.com/phillyfan1138/AutoDiff">AutoDiff</a>.  This repository includes financial functions which can be overloaded with the "AutoDiff" class and return both the value and partial derivatives.
+This repository acts as a proof of concept for model applications which run on their own websocket.  In real applications the port would be controlled externally, but passed to the program on startup.  This program is responsible for responding to various requests from clients.   
